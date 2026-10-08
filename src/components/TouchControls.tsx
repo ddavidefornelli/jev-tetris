@@ -1,9 +1,13 @@
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, RotateCw, ScanLine } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { GameCommand } from '../game/types';
 
 export function TouchControls({ onCommand, disabled }: { onCommand: (command: GameCommand) => void; disabled: boolean }) {
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearInterval(timer.current);
+    timer.current = null;
+  }, [disabled]);
   const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
   const buttons = [
     { command: 'hold' as const, icon: ScanLine, label: 'Hold' },

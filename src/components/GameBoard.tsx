@@ -1,14 +1,7 @@
-import { ArrowRight, Pause, Play, RotateCcw, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { BOARD_HEIGHT, BOARD_WIDTH, PIECE_COLORS } from '../game/constants';
-import type { GameSnapshot, PieceType } from '../game/types';
-
-const DEMO_ROWS = [
-  '..........', '..........', '..........', '..........', '..........',
-  '..........', '..........', '..........', '..........', '..........',
-  '..........', '..........', '..........', '..........', '..........',
-  '..........', '.T........', 'TTT....L..', 'JJ..SS.L..', '.J.SS.LL..',
-];
+import type { GameSnapshot } from '../game/types';
 
 interface GameBoardProps {
   state: GameSnapshot;
@@ -33,8 +26,7 @@ export function GameBoard({ state, onStart, onResume }: GameBoardProps) {
               const x = index % BOARD_WIDTH;
               const y = Math.floor(index / BOARD_WIDTH);
               const coordinate = `${x}:${y}`;
-              const demo = isReady ? DEMO_ROWS[y]?.[x] : '.';
-              const type = active.get(coordinate) ?? state.board[y]?.[x] ?? (demo && demo !== '.' ? demo as PieceType : null);
+              const type = active.get(coordinate) ?? state.board[y]?.[x];
               const ghostType = !type ? ghost.get(coordinate) : null;
               return (
                 <div key={index} className="board-cell">
@@ -50,20 +42,16 @@ export function GameBoard({ state, onStart, onResume }: GameBoardProps) {
           )}
           {covered && (
             <div className={`board-overlay ${isReady ? 'ready-overlay' : ''}`}>
-              <div className="overlay-symbol">{isReady ? <Play size={21} fill="currentColor" /> : state.phase === 'paused' ? <Pause size={23} /> : <RotateCcw size={24} />}</div>
-              <span className="overlay-eyebrow">{isReady ? 'A CLASSIC. A FRESH START.' : state.phase === 'paused' ? 'RIGHT WHERE YOU LEFT OFF' : 'THERE’S ALWAYS ANOTHER ROUND'}</span>
-              <h2>{isReady ? <>Find your<br />flow.</> : state.phase === 'paused' ? <>Take a<br />breather.</> : <>Nice<br />run.</>}</h2>
-              <p>{isReady ? 'One piece at a time.' : state.phase === 'paused' ? 'Your next move can wait.' : `${state.score.toLocaleString('en-US')} points. Ready to beat it?`}</p>
+              <h2>{isReady ? 'TETRIS' : state.phase === 'paused' ? 'PAUSED' : 'GAME OVER'}</h2>
               <button className="primary-button" onClick={state.phase === 'paused' ? onResume : onStart}>
-                {isReady ? 'Let’s play' : state.phase === 'paused' ? 'Keep going' : 'Play again'}<ArrowRight size={16} />
+                {isReady ? 'START' : state.phase === 'paused' ? 'RESUME' : 'PLAY AGAIN'}
               </button>
-              <span className="overlay-shortcut">or press <kbd>{state.phase === 'paused' ? 'esc' : 'enter'}</kbd></span>
+              <span className="overlay-shortcut"><kbd>{state.phase === 'paused' ? 'ESC' : 'ENTER'}</kbd></span>
             </div>
           )}
         </div>
-        <div className="board-bottomline"><span className="flex items-center gap-1.5"><span className="ghost-indicator" />Ghost piece enabled</span><span className="font-mono">{state.phase === 'playing' ? 'GOOD LUCK, HAVE FUN' : 'MAKE A LITTLE SPACE'}</span></div>
+
       </div>
-      <p className="board-caption"><span />{state.phase === 'playing' ? 'Clear lines. Find rhythm. Keep going.' : 'A little focus. A lot of falling blocks.'}</p>
     </section>
   );
 }

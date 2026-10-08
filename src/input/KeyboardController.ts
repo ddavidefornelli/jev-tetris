@@ -21,7 +21,7 @@ interface HeldKey {
 export class KeyboardController {
   private held = new Map<string, HeldKey>();
 
-  constructor(private readonly engine: GameEngine) {}
+  constructor(private readonly engine: GameEngine, private readonly canPlay: () => boolean = () => true) {}
 
   attach(): () => void {
     window.addEventListener('keydown', this.onKeyDown);
@@ -38,7 +38,7 @@ export class KeyboardController {
   }
 
   update(deltaMs: number): void {
-    if (this.engine.getSnapshot().phase !== 'playing') {
+    if (!this.canPlay() || this.engine.getSnapshot().phase !== 'playing') {
       this.held.clear();
       return;
     }
@@ -61,6 +61,7 @@ export class KeyboardController {
     if (!command) return;
     event.preventDefault();
     if (event.repeat || this.held.has(event.code)) return;
+    if (!this.canPlay() && command !== 'pause' && command !== 'start') return;
     this.engine.command(command);
     if (command === 'left' || command === 'right' || command === 'down') {
       // The most recently pressed horizontal direction takes precedence.
