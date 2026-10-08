@@ -1,6 +1,6 @@
 import { BagRandomizer } from './BagRandomizer';
 import { Board } from './Board';
-import { gravityInterval, LINES_PER_LEVEL, LOCK_DELAY_MS, MAX_LOCK_RESETS, PREVIEW_COUNT, rotationKicks } from './constants';
+import { gravityInterval, LINES_PER_LEVEL, LOCK_DELAY_MS, MAX_LOCK_RESETS, PREVIEW_COUNT } from './constants';
 import { Tetromino } from './Tetromino';
 import type { GameCommand, GameEvent, GamePhase, GameSnapshot, LineClear, PieceType } from './types';
 
@@ -178,18 +178,13 @@ export class GameEngine {
   }
 
   private rotate(direction: 1 | -1): boolean {
-    if (!this.active || this.active.type === 'O') return false;
-    const rotated = this.active.rotate(direction);
-    for (const [dx, dy] of rotationKicks(this.active.type, this.active.rotation, rotated.rotation)) {
-      const candidate = rotated.move(dx, dy);
-      if (this.board.canPlace(candidate)) {
-        this.resetLockOnAdjustment();
-        this.active = candidate;
-        this.emit('rotate');
-        return true;
-      }
-    }
-    return false;
+    if (!this.active) return false;
+    const candidate = this.board.rotatedPosition(this.active, direction);
+    if (!candidate) return false;
+    this.resetLockOnAdjustment();
+    this.active = candidate;
+    this.emit('rotate');
+    return true;
   }
 
   private resetLockOnAdjustment(): void {
@@ -262,6 +257,7 @@ export class GameEngine {
       lines: this.lines,
       level: this.level,
       combo: this.combo,
+      backToBack: this.backToBack,
       lastClear: this.lastClear,
     };
   }

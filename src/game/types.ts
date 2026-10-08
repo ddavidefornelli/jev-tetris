@@ -14,6 +14,10 @@ export interface Point {
 
 export interface PieceView {
   readonly type: PieceType;
+  /** Origin of the piece's shape matrix, not necessarily its leftmost occupied cell. */
+  readonly x: number;
+  readonly y: number;
+  readonly rotation: Rotation;
   readonly cells: readonly Point[];
 }
 
@@ -37,5 +41,6 @@ export interface GameSnapshot {
   readonly lines: number;
   readonly level: number;
   readonly combo: number;
+  readonly backToBack: boolean;
   readonly lastClear: LineClear | null;
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GameEngine } from '../game/GameEngine';
+import { BagRandomizer } from '../game/BagRandomizer';
+import { Tetromino } from '../game/Tetromino';
+import { GAMEPLAY_BINDINGS, gameplayCommandForKey, KEY_MAP } from '../input/bindings';
 import { AiPlayer } from './AiPlayer';
 import { JevAiClient } from './JevAiClient';
 import { parseDecision } from './protocol';
@@ -16,6 +19,20 @@ function deferred() {
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 describe('AI player', () => {
+  it.each(Object.entries(GAMEPLAY_BINDINGS))('executes gameplay key %s exactly like human input', async (key, binding) => {
+    const engine = new GameEngine(new BagRandomizer(() => 0));
+    const humanEngine = new GameEngine(new BagRandomizer(() => 0));
+    engine.start(); humanEngine.start();
+    engine.command('right'); humanEngine.command('right');
+    const player = new AiPlayer(engine, { decide: async () => ({ action: gameplayCommandForKey(key) }) });
+    player.start(); player.update(0);
+    humanEngine.command(KEY_MAP[key]!);
+    await vi.waitFor(() => expect(player.getSnapshot().thinking).toBe(false));
+    expect(player.getSnapshot().error).toBeNull();
+    expect(engine.getSnapshot()).toEqual(humanEngine.getSnapshot());
+    expect(KEY_MAP[key]).toBe(binding.command);
+  });
+
   it('starts a game, serializes requests and applies an action', async () => {
     const engine = new GameEngine();
     const pending = deferred();
@@ -80,36 +97,124 @@ describe('Jev protocol and prompts', () => {
     expect(parseDecision({ action: 'rotate-cw' })).toEqual({ action: 'rotate-cw' });
   });
 
-  it('encodes locked board separately and excludes unavailable hold', () => {
-    const engine = new GameEngine(); engine.start(); engine.command('hold');
-    const prompt = new TetrisPromptBuilder().build(engine.getSnapshot());
+  it('sends the complete snapshot and geometry of the ordered next and held pieces', () => {
+    const engine = new GameEngine(); engine.start(); engine.command('drop'); engine.command('hold');
+    engine.command('right'); engine.command('rotate-cw');
+    const snapshot = engine.getSnapshot();
+    const prompt = new TetrisPromptBuilder().build(snapshot);
+    expect(prompt.state).toMatchObject(snapshot);
     expect(prompt.state.board).toHaveLength(20);
-    expect(prompt.state.board[0]).toBe('..........');
+    expect(prompt.state.board[0]).toEqual(Array(10).fill(null));
+    expect(prompt.state.board.flat().filter(Boolean)).toHaveLength(4);
+    expect(prompt.state.boardRows[0]).toBe('..........');
     expect(prompt.state.active?.cells).toHaveLength(4);
-    expect(prompt.questions.move.criteria).not.toHaveProperty('hold');
+    expect(prompt.state.active).toHaveProperty('rotation');
+    expect(prompt.state.active).toHaveProperty('x');
+    expect(prompt.state.active).toHaveProperty('y');
+    expect(prompt.state.nextPieces.map(piece => piece.type)).toEqual(snapshot.next);
+    prompt.state.nextPieces.forEach((piece, index) => {
+      expect(piece.queueIndex).toBe(index);
+      expect(piece).toMatchObject(new Tetromino(snapshot.next[index]!).toView());
+      expect(piece.shape.flat().filter(Boolean)).toHaveLength(4);
+    });
+    expect(prompt.state.holdPiece).toMatchObject(new Tetromino(snapshot.hold!).toView());
+    expect(prompt.state.placements.every(option => !option.usesHold)).toBe(true);
+    expect(prompt.state.controls.KeyC?.available).toBe(false);
     expect(prompt.questions.move.instructions.length).toBeLessThan(1000);
+  });
+
+  it('makes long-term big wins an explicit state objective', () => {
+    const engine = new GameEngine(); engine.start();
+    const prompt = new TetrisPromptBuilder().build(engine.getSnapshot());
+    expect(prompt.state.objective).toContain('long-term total score');
+    expect(prompt.state.objective).toContain('four-line Tetrises');
+    expect(prompt.state.objective).toContain('Do not clear a single row as soon as possible');
+    expect(prompt.questions.move.instructions).toContain('state.objective');
+  });
+
+  it('keeps every gameplay key but offers only complete reachable placements', () => {
+    const engine = new GameEngine(); engine.start();
+    const prompt = new TetrisPromptBuilder().build(engine.getSnapshot());
+    expect(Object.keys(prompt.state.controls)).toEqual(Object.keys(GAMEPLAY_BINDINGS));
+    expect(Object.keys(prompt.questions.move.criteria)).toEqual(prompt.state.placements.map(option => option.id));
+    expect(prompt.state.placements.length).toBeGreaterThan(0);
+    expect(prompt.state.placements.every(option => option.actions.at(-1) === 'drop')).toBe(true);
+    for (const [key, binding] of Object.entries(GAMEPLAY_BINDINGS)) {
+      expect(gameplayCommandForKey(key)).toBe(binding.command);
+      for (const alias of binding.aliases) {
+        expect(gameplayCommandForKey(alias)).toBe(binding.command);
+        expect(KEY_MAP[alias]).toBe(KEY_MAP[key]);
+      }
+    }
+    for (const invalid of ['Enter', 'Escape', 'KeyP', 'drop', '__proto__', 'delete', null]) {
+      expect(() => gameplayCommandForKey(invalid)).toThrow('Invalid AI key');
+    }
   });
 
   it('uses the documented choice API and server-only authorization', async () => {
     const engine = new GameEngine(); engine.start();
-    const transport = vi.fn(async () => new Response(JSON.stringify({ answers: { move: { type: 'choice', choice: 'drop' } } })));
-    const service = new JevDecisionService({ apiKey: 'secret-test-key', endpoint: 'https://jev-ai.org/api/v1/systemone/', model: 'jev-1.13', timeoutMs: 1000 }, transport);
-    expect(await service.decide(engine.getSnapshot(), new AbortController().signal)).toEqual({ action: 'drop' });
+    const transport = vi.fn(async () => new Response(JSON.stringify({ answers: { move: { type: 'choice', choice: 'place_0' } } })));
+    const service = new JevDecisionService({ apiKey: 'secret-test-key', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', timeoutMs: 1000 }, transport);
+    const decision = await service.decide(engine.getSnapshot(), new AbortController().signal);
+    expect(decision).toEqual({ actions: new TetrisPromptBuilder().build(engine.getSnapshot()).state.placements[0]!.actions });
     const args = transport.mock.calls as unknown as [string, RequestInit][];
+    expect(args[0]![0]).toBe('https://api.typesafe.ai/v1/systemone');
     const request = args[0]![1];
     expect(request.headers).toHaveProperty('Authorization', 'Bearer secret-test-key');
-    expect(JSON.parse(request.body as string)).toMatchObject({ model: 'jev-1.13', questions: { move: { type: 'choice' } } });
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      model: 'jev-latest',
+      state: engine.getSnapshot(),
+      questions: { move: { type: 'choice', criteria: { place_0: expect.any(String) } } },
+    });
+  });
+
+  it('logs every valid Jev move in the server and browser consoles', async () => {
+    const engine = new GameEngine(); engine.start();
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const service = new JevDecisionService(
+        { apiKey: 'test-key', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', timeoutMs: 1000 },
+        async () => new Response(JSON.stringify({ answers: { move: { type: 'choice', choice: 'place_0' } } })),
+      );
+      const client = new JevAiClient('/api/jev/decision', async () => new Response(JSON.stringify({ action: 'drop' })));
+      for (let i = 0; i < 2; i++) {
+        await service.decide(engine.getSnapshot(), new AbortController().signal);
+        await client.decide(engine.getSnapshot(), new AbortController().signal);
+      }
+      expect(log).toHaveBeenCalledTimes(4);
+      expect(log).toHaveBeenNthCalledWith(1, '[Jev placement]', 'place_0', '→', expect.any(String));
+      expect(log).toHaveBeenNthCalledWith(2, '[Jev move]', 'drop');
+      expect(log).toHaveBeenNthCalledWith(3, '[Jev placement]', 'place_0', '→', expect.any(String));
+      expect(log).toHaveBeenNthCalledWith(4, '[Jev move]', 'drop');
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it.each(['Escape', 'Enter', 'drop', 'not-a-key'])('rejects provider choice %s rather than executing it', async key => {
+    const engine = new GameEngine(); engine.start();
+    const transport = vi.fn(async () => new Response(JSON.stringify({ answers: { move: { type: 'choice', choice: key } } })));
+    const service = new JevDecisionService({ apiKey: 'test-key', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', timeoutMs: 1000 }, transport);
+    await expect(service.decide(engine.getSnapshot(), new AbortController().signal)).rejects.toThrow('Invalid Jev placement');
+  });
+
+  it('rejects an isolated hold key instead of accepting a placement', async () => {
+    const engine = new GameEngine(); engine.start(); engine.command('hold');
+    const transport = vi.fn(async () => new Response(JSON.stringify({ answers: { move: { type: 'choice', choice: 'KeyC' } } })));
+    const service = new JevDecisionService({ apiKey: 'test-key', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', timeoutMs: 1000 }, transport);
+    await expect(service.decide(engine.getSnapshot(), new AbortController().signal)).rejects.toThrow('Invalid Jev placement');
   });
 
   it.each([
-    [401, 'Jev rejected the API key'],
+    [401, 'Jev authentication failed. Check JEV_API_KEY and JEV_API_URL'],
+    [403, 'Jev authentication failed. Check JEV_API_KEY and JEV_API_URL'],
     [402, 'Jev balance is insufficient'],
     [429, 'Jev rate limit reached'],
     [503, 'Jev upstream request failed'],
   ])('reports safe diagnostics for upstream HTTP %s', async (status, message) => {
     const engine = new GameEngine(); engine.start();
     const transport = vi.fn(async () => new Response('private provider details', { status }));
-    const service = new JevDecisionService({ apiKey: 'secret-test-key', endpoint: 'https://jev-ai.org/api/v1/systemone/', model: 'jev-1.13', timeoutMs: 1000 }, transport);
+    const service = new JevDecisionService({ apiKey: 'secret-test-key', endpoint: 'https://api.typesafe.ai/v1/systemone', model: 'jev-latest', timeoutMs: 1000 }, transport);
     await expect(service.decide(engine.getSnapshot(), new AbortController().signal)).rejects.toThrow(`${message}`);
   });
 

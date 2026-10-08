@@ -17,6 +17,9 @@ export class JevAiClient implements DecisionProvider {
       const body = await response.json().catch(() => null) as { error?: string } | null;
       throw new Error(body?.error ?? `AI connection failed (${response.status})`);
     }
-    return parseDecision(await response.json());
+    const decision = parseDecision(await response.json());
+    if ('actions' in decision) console.log('[Jev placement]', decision.actions.join(' '));
+    else console.log('[Jev move]', decision.action);
+    return decision;
   }
 }

@@ -1,4 +1,4 @@
-import type { PieceType, Rotation } from './types';
+import type { PieceType, Rotation } from './types.ts';
 
 export const BOARD_WIDTH = 10;
 export const BOARD_HEIGHT = 20;

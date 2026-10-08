@@ -1,15 +1,7 @@
 import type { GameEngine } from '../game/GameEngine';
 import type { GameCommand } from '../game/types';
 
-const KEY_MAP: Record<string, GameCommand> = {
-  ArrowLeft: 'left', KeyA: 'left',
-  ArrowRight: 'right', KeyD: 'right',
-  ArrowDown: 'down', KeyS: 'down',
-  ArrowUp: 'rotate-cw', KeyW: 'rotate-cw', KeyX: 'rotate-cw',
-  KeyZ: 'rotate-ccw', Space: 'drop',
-  KeyC: 'hold', ShiftLeft: 'hold', ShiftRight: 'hold',
-  Escape: 'pause', KeyP: 'pause', Enter: 'start',
-};
+import { KEY_MAP } from './bindings';
 
 interface HeldKey {
   command: GameCommand;

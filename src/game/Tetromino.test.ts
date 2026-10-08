@@ -24,6 +24,11 @@ describe('Tetromino', () => {
     expect(moved.y).toBe(6);
   });
 
+  it('exposes the exact origin and rotation alongside absolute cells', () => {
+    const piece = new Tetromino('T', 2, 6, 3);
+    expect(piece.toView()).toEqual({ type: 'T', x: 2, y: 6, rotation: 3, cells: piece.cells });
+  });
+
   it('does not shift the square piece when rotating', () => {
     const piece = new Tetromino('O');
     expect(piece.rotate(1).cells).toEqual(piece.cells);

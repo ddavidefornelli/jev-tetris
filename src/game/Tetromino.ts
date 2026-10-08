@@ -1,5 +1,5 @@
-import { BOARD_WIDTH, SHAPES } from './constants';
-import type { PieceType, PieceView, Point, Rotation } from './types';
+import { BOARD_WIDTH, SHAPES } from './constants.ts';
+import type { PieceType, PieceView, Point, Rotation } from './types.ts';
 
 /** Immutable piece value object. Transformations create candidates, not mutations. */
 export class Tetromino {
@@ -37,6 +37,6 @@ export class Tetromino {
   }
 
   toView(): PieceView {
-    return { type: this.type, cells: this.cells };
+    return { type: this.type, x: this.x, y: this.y, rotation: this.rotation, cells: this.cells };
   }
 }

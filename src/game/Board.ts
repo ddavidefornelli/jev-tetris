@@ -1,6 +1,6 @@
-import { BOARD_HEIGHT, BOARD_WIDTH } from './constants';
-import type { Tetromino } from './Tetromino';
-import type { Cell, Grid } from './types';
+import { BOARD_HEIGHT, BOARD_WIDTH, rotationKicks } from './constants.ts';
+import type { Tetromino } from './Tetromino.ts';
+import type { Cell, Grid } from './types.ts';
 
 /** Owns collision, placement, and row compaction; has no knowledge of UI or scoring. */
 export class Board {
@@ -21,6 +21,17 @@ export class Board {
     return piece.cells.every(({ x, y }) =>
       x >= 0 && x < this.width && y < this.height && (y < 0 || this.rows[y]?.[x] === null),
     );
+  }
+
+  /** Shared SRS rotation resolution for gameplay and reachable-placement search. */
+  rotatedPosition(piece: Tetromino, direction: 1 | -1): Tetromino | null {
+    if (piece.type === 'O') return null;
+    const rotated = piece.rotate(direction);
+    for (const [dx, dy] of rotationKicks(piece.type, piece.rotation, rotated.rotation)) {
+      const candidate = rotated.move(dx, dy);
+      if (this.canPlace(candidate)) return candidate;
+    }
+    return null;
   }
 
   /** Returns false on top-out without partially writing an invalid piece. */

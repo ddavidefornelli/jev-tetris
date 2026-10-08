@@ -16,31 +16,57 @@ then restart Vite. For fresh checkouts, copy `.env.example` to `.env` first.
 
 ```dotenv
 JEV_API_KEY=your-key
-JEV_API_URL=https://jev-ai.org/api/v1/systemone/
-JEV_MODEL=jev-1.13
+JEV_API_URL=https://api.typesafe.ai/v1/systemone
+JEV_MODEL=jev-latest
 JEV_TIMEOUT_MS=10000
 ```
 
-Click **Let Jev AI play**. It starts a game if needed. Pause/resume and restart
-still work; **Stop Jev AI** returns control to you. Movement keyboard shortcuts
-and touch buttons are disabled during AI play. Each AI decision performs a
-single action, with gravity suspended in AI mode so network latency cannot
-invalidate its view. This is intentionally turn-based, not a real-time agent.
+Use a key from the TypeSafe console with the official `api.typesafe.ai` endpoint.
+Keys are provider-specific; a valid TypeSafe key will not authenticate on third-party
+Jev gateways. You can check credentials without running inference using
+`GET https://api.typesafe.ai/v1/models` with a Bearer authorization header.
 
-Requests can incur charges, up to roughly five decisions per second. Requests
-are serialized and bounded by timeouts. Errors or repeated blocked moves stop
-the player; there are no automatic retries of paid requests. AI quality is not
-guaranteed. No live provider call is made by the tests.
+Click **AI: OFF** to enable AI play. It starts a game if needed. Pause/resume
+and restart still work; **AI: ON** returns control to you. Movement keyboard
+shortcuts and touch buttons are disabled during AI play.
+
+Each Jev decision now selects a **complete reachable landing**, not an isolated
+key. A local planner enumerates collision-checked SRS paths, scores their final
+boards (holes, height, wells, and big clears), and evaluates one-piece lookahead
+including hold. Jev compares a bounded shortlist with the full game state and
+long-term big-wins objective. The player commits to the selected keyboard sequence
+and hard drops, with no re-deciding between rotations. This prevents endless
+rotation/left-right loops and guarantees each valid plan places a piece.
+
+Gravity is suspended in AI mode so network latency cannot invalidate a plan.
+Stopping, pausing, restarting, or unexpected input discards the remaining plan.
+Requests can incur charges: one request per placement, at most roughly five per
+second, rather than one per key. Requests are serialized and bounded by timeouts.
+Errors or blocked planned moves stop the player; there are no automatic retries
+of paid requests. AI quality is not guaranteed. No live provider call is made by
+the tests.
 
 ## Architecture
 
+- `src/ai/TetrisPlacementPlanner.ts`: bounded reachable-placement search with
+  shared engine SRS rotations, exact keyboard plans, board metrics, and next-piece
+  lookahead. Every plan ends in hard drop; options that immediately top out are
+  excluded.
 - `src/ai/TetrisPromptBuilder.ts`: versioned board context, strategy instructions,
-  and a typed `choice` question with the available Tetris actions. Modify this
+  and a typed `choice` question with complete placement options. The state includes
+  the full board, active/ghost origin and rotation, next/held piece geometry,
+  scoring context, and an explicit long-term big-wins objective (not instant
+  single-row clears). Modify this
   class to experiment with prompts without changing networking or the engine.
-- `src/ai/protocol.ts`: provider interface and runtime action validation.
+- `src/input/bindings.ts`: shared human/AI gameplay key bindings: left, right,
+  soft drop, clockwise/counterclockwise rotation, hard drop, and hold (including
+  keyboard aliases). Pause/start remain user controls. The selected placement
+  executes these same engine commands as human key presses.
+- `src/ai/protocol.ts`: provider interface and runtime action/plan validation;
+  plans are bounded to 64 commands, allow hold only first, and end in one drop.
 - `src/ai/JevAiClient.ts`: browser-to-server adapter; contains no API key.
 - `src/ai/AiPlayer.ts`: reusable engine controller with a host-supplied clock,
-  cancellation, stale-answer checks, subscriptions, and request cadence.
+  cancellation, stale-answer/plan checks, paced plan execution, and request cadence.
 - `server/JevDecisionService.ts`: server-only authenticated Jev REST adapter,
   using `state` + `questions` and reading `answers.move.choice`.
 - `server/jevPlugin.ts`: `/api/jev/decision` bridge for Vite dev **and preview**;
@@ -49,8 +75,8 @@ guaranteed. No live provider call is made by the tests.
 To substitute another provider, implement `DecisionProvider.decide(state,
 signal)` and inject it into `AiPlayer`. The game engine is independent of AI.
 
-Jev protocol references: [Decisions](https://jev-ai.org/docs/decisions/) and
-[Question types](https://jev-ai.org/docs/question-types/).
+Jev protocol references: [TypeSafe API](https://api.typesafe.ai/redoc) and
+[Question types](https://docs.typesafe.ai/primitives).
 
 ## Deployment/security
 
